@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.2.0';
+  const APP_VERSION = '1.2.1';
   const SETTINGS_KEY = 'schichtscan.settings.v2';
   const state = {
     files: [],
@@ -419,11 +419,16 @@
   }
 
   function effectiveEndDate(event) {
-    if (event.endDate && /^\d{4}-\d{2}-\d{2}$/.test(event.endDate)) return event.endDate;
-    if (event.end <= event.start && window.ShiftParser && window.ShiftParser.addDays) {
-      return window.ShiftParser.addDays(event.date, 1);
+    if (window.ShiftParser && window.ShiftParser.resolvedEventEndDate) {
+      return window.ShiftParser.resolvedEventEndDate(event.date, event.start, event.end, event.endDate);
     }
-    return event.date;
+    const validEndDate = event.endDate && /^\d{4}-\d{2}-\d{2}$/.test(event.endDate);
+    if (event.end <= event.start && window.ShiftParser && window.ShiftParser.addDays) {
+      return validEndDate && event.endDate > event.date
+        ? event.endDate
+        : window.ShiftParser.addDays(event.date, 1);
+    }
+    return validEndDate && event.endDate >= event.date ? event.endDate : event.date;
   }
 
   function isOvernightEvent(event) {
@@ -675,8 +680,9 @@
     if (!selected.length) throw new Error('Bitte mindestens einen Termin für den Export auswählen.');
     for (const event of selected) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(event.date || '')) throw new Error('Mindestens ein Datum ist ungültig.');
-      if (event.endDate && !/^\d{4}-\d{2}-\d{2}$/.test(event.endDate)) throw new Error('Mindestens ein Enddatum ist ungültig.');
       if (!/^\d{2}:\d{2}$/.test(event.start || '') || !/^\d{2}:\d{2}$/.test(event.end || '')) throw new Error('Mindestens eine Uhrzeit ist ungültig.');
+      event.endDate = effectiveEndDate(event);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(event.endDate || '')) throw new Error('Mindestens ein Enddatum ist ungültig.');
       if (!String(event.title || '').trim()) throw new Error('Jeder Termin benötigt einen Titel.');
     }
     return selected;

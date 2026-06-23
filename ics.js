@@ -91,6 +91,10 @@
 
   function buildDescription(event, options) {
     const lines = [];
+    const resolvedEnd = resolvedEndDate(event);
+    if (validIsoDate(event.date) && resolvedEnd > event.date) {
+      lines.push(`Ende: ${germanDate(resolvedEnd)} ${event.end}`);
+    }
     const templateDiffers = event.templateStart && event.templateEnd &&
       (event.templateStart !== event.start || event.templateEnd !== event.end ||
         (event.endDate && event.endDate !== event.date && event.templateEnd > event.templateStart));
@@ -112,8 +116,17 @@
   }
 
   function resolvedEndDate(event) {
-    if (validIsoDate(event.endDate)) return event.endDate;
-    return endsNextDay(event.start, event.end) ? addDays(event.date, 1) : event.date;
+    const date = validIsoDate(event.date) ? event.date : '';
+    if (!date) return validIsoDate(event.endDate) ? event.endDate : event.date;
+
+    const crossesMidnight = endsNextDay(event.start, event.end);
+    let endDate = validIsoDate(event.endDate) ? event.endDate : date;
+
+    // Never trust a stale same-day endDate for a clock range such as 16:36–06:54.
+    // This guarantees that Ruf- and Nachtdienste end on the following calendar day.
+    if (crossesMidnight && endDate <= date) endDate = addDays(date, 1);
+    if (!crossesMidnight && endDate < date) endDate = date;
+    return endDate;
   }
 
   function buildIcs(events, options) {

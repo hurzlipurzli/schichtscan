@@ -1,18 +1,18 @@
 'use strict';
 
-const CACHE_NAME = 'schichtscan-v1.2.0-ios';
+const CACHE_NAME = 'schichtscan-v1.2.1-ios';
 const APP_SHELL = [
   './',
   './index.html',
-  './styles.css?v=1.2.0',
-  './parser.js?v=1.2.0',
-  './ics.js?v=1.2.0',
-  './app.js?v=1.2.0',
-  './manifest.webmanifest?v=1.2.0',
+  './styles.css?v=1.2.1',
+  './parser.js?v=1.2.1',
+  './ics.js?v=1.2.1',
+  './app.js?v=1.2.1',
+  './manifest.webmanifest?v=1.2.1',
   './icon-192.png',
   './icon-512.png',
   './apple-touch-icon.png',
-  './tesseract.min.js?v=1.2.0',
+  './tesseract.min.js?v=1.2.1',
   './worker.min.js',
   './tesseract-core-lstm.wasm.js',
   './deu.traineddata.gz'

@@ -56,7 +56,7 @@
       icsColor: 'black'
     }),
     'R+': Object.freeze({
-      title: 'R+',
+      title: 'Rufdienst',
       color: '#ffffff',
       textColor: '#111111',
       borderColor: '#111111',
@@ -502,6 +502,36 @@
     return Date.UTC(year, month - 1, day) + minutes * 60000;
   }
 
+  function validIsoDate(value) {
+    const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return false;
+    return validDateParts(Number(match[1]), Number(match[2]), Number(match[3]));
+  }
+
+  function resolvedEventEndDate(date, start, end, proposedEndDate) {
+    if (!validIsoDate(date)) return proposedEndDate || date;
+    const startMinutes = timeToMinutes(start);
+    const endMinutes = timeToMinutes(end);
+    if (!Number.isFinite(startMinutes) || !Number.isFinite(endMinutes)) {
+      return validIsoDate(proposedEndDate) ? proposedEndDate : date;
+    }
+
+    const crossesMidnight = endMinutes <= startMinutes;
+    let resolved = validIsoDate(proposedEndDate) ? proposedEndDate : date;
+
+    // A stale same-day endDate used to truncate R+/N2 at midnight in the ICS export.
+    if (crossesMidnight && resolved <= date) resolved = addDays(date, 1);
+    if (!crossesMidnight && resolved < date) resolved = date;
+
+    const startValue = dateTimeValue(date, start);
+    let endValue = dateTimeValue(resolved, end);
+    if (Number.isFinite(startValue) && Number.isFinite(endValue) && endValue <= startValue) {
+      resolved = addDays(date, 1);
+      endValue = dateTimeValue(resolved, end);
+    }
+    return resolved;
+  }
+
   function normalizeSegments(entry) {
     const segments = [];
     const anchor = entry.templateRange.startMinutes;
@@ -576,6 +606,7 @@
       end = last.end;
     }
 
+    endDate = resolvedEventEndDate(date, start, end, endDate);
     const spanMinutes = (dateTimeValue(endDate, end) - dateTimeValue(date, start)) / 60000;
     const unexpectedStartDate = date !== entry.dateInfo.isoDate;
     const reliableKnownTemplate = Boolean(knownTemplate && knownTemplate.code);
@@ -803,6 +834,7 @@
     if (conflict) {
       better.note = [better.note, 'Abweichende Detailzeiten in überlappenden Screenshots'].filter(Boolean).join('; ');
     }
+    better.endDate = resolvedEventEndDate(better.date, better.start, better.end, better.endDate);
     return { event: better, exactIdentity, conflict };
   }
 
@@ -833,6 +865,7 @@
 
     result.sort((a, b) => `${a.date}T${a.start}`.localeCompare(`${b.date}T${b.start}`));
     result.forEach((event) => {
+      event.endDate = resolvedEventEndDate(event.date, event.start, event.end, event.endDate);
       event.id = stableId(event);
       if (event.timeNormalized) stats.normalizedCount += 1;
     });
@@ -923,6 +956,7 @@
     titleForCode,
     likelyDuplicateEvents,
     stableId,
-    addDays
+    addDays,
+    resolvedEventEndDate
   };
 });
