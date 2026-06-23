@@ -22,5 +22,10 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
+  ],
+  "id": "./",
+  "categories": [
+    "productivity",
+    "utilities"
   ]
 }

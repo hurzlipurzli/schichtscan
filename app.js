@@ -1,6 +1,7 @@
 (function () {
   'use strict';
 
+  const APP_VERSION = '1.2.0';
   const SETTINGS_KEY = 'schichtscan.settings.v2';
   const state = {
     files: [],
@@ -9,9 +10,11 @@
     rawResults: [],
     parserWarnings: [],
     ignoredDaysOff: 0,
+    mergeStats: { inputCount: 0, mergedCount: 0, fuzzyMergedCount: 0, normalizedCount: 0 },
     processing: false,
     activeFileIndex: -1,
-    worker: null
+    worker: null,
+    editingEventId: ''
   };
 
   const elements = {};
@@ -26,7 +29,7 @@
     registerServiceWorker();
 
     if (window.location.protocol === 'file:') {
-      showFatalError('Auf dem iPhone kann die OCR nicht zuverlässig direkt aus der Dateien-App gestartet werden. Du brauchst aber keinen gekauften Server: Eine kostenlose statische HTTPS-Seite genügt; nach der Installation arbeitet SchichtScan offline.');
+      showFatalError('Die OCR kann nicht zuverlässig direkt aus einer lokalen Datei gestartet werden. Du brauchst aber keinen gekauften Server: Eine kostenlose statische HTTPS-Seite genügt; nach der Installation arbeitet SchichtScan offline.');
     } else if (!window.Tesseract || !window.ShiftParser || !window.IcsBuilder) {
       showFatalError('Die Anwendung konnte nicht vollständig geladen werden. Bitte die Seite neu laden und prüfen, ob alle Dateien auf dem Webserver vorhanden sind.');
     }
@@ -39,7 +42,11 @@
       'result-card', 'result-count', 'result-summary', 'warning-box', 'event-list', 'add-event-button',
       'settings-card', 'calendar-name', 'location', 'reminder-minutes', 'include-source-note', 'prefer-detail-times', 'shift-code-map',
       'export-card', 'share-ics-button', 'download-ics-button',
-      'raw-card', 'raw-results', 'offline-status', 'fatal-error', 'toast'
+      'raw-card', 'raw-results', 'offline-status', 'fatal-error', 'toast',
+      'event-editor', 'event-editor-backdrop', 'event-editor-close', 'event-editor-heading',
+      'editor-shift-token', 'editor-shift-code', 'editor-shift-hint', 'editor-event-title',
+      'editor-event-date', 'editor-event-start', 'editor-event-end', 'editor-event-include',
+      'editor-event-source', 'editor-save', 'editor-cancel', 'editor-delete'
     ];
     ids.forEach((id) => { elements[toCamelCase(id)] = document.getElementById(id); });
   }
@@ -54,6 +61,14 @@
     elements.addEventButton.addEventListener('click', addManualEvent);
     elements.shareIcsButton.addEventListener('click', shareIcs);
     elements.downloadIcsButton.addEventListener('click', downloadIcs);
+    elements.eventEditorBackdrop.addEventListener('click', closeEventEditor);
+    elements.eventEditorClose.addEventListener('click', closeEventEditor);
+    elements.editorCancel.addEventListener('click', closeEventEditor);
+    elements.editorSave.addEventListener('click', saveEditedEvent);
+    elements.editorDelete.addEventListener('click', deleteEditedEvent);
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !elements.eventEditor.classList.contains('hidden')) closeEventEditor();
+    });
 
     ['calendarName', 'location', 'reminderMinutes', 'includeSourceNote', 'preferDetailTimes', 'shiftCodeMap'].forEach((key) => {
       elements[key].addEventListener('change', saveSettings);
@@ -137,6 +152,7 @@
     state.rawResults = [];
     state.parserWarnings = [];
     state.ignoredDaysOff = 0;
+    state.mergeStats = { inputCount: 0, mergedCount: 0, fuzzyMergedCount: 0, normalizedCount: 0 };
     state.activeFileIndex = -1;
     elements.recognizeButton.disabled = true;
     elements.screenshotInput.disabled = true;
@@ -187,7 +203,9 @@
         canvas.height = 1;
       }
 
-      state.events = window.ShiftParser.mergeAndDedupe(allEvents).map((event) => ({ ...event, include: event.include !== false }));
+      const merged = window.ShiftParser.mergeAndDedupeDetailed(allEvents);
+      state.events = merged.events.map((event) => ({ ...event, include: event.include !== false }));
+      state.mergeStats = merged.stats;
       renderResults();
       updateProgress(1, 'Erkennung abgeschlossen', `${state.events.length} Termin${state.events.length === 1 ? '' : 'e'} erkannt.`);
       showToast(state.events.length ? `${state.events.length} Termine erkannt – bitte kurz prüfen.` : 'Keine Dienste erkannt. OCR-Rohtext öffnen und Screenshot prüfen.');
@@ -311,15 +329,12 @@
     if (event.include === false) card.classList.add('excluded');
     if (event.needsReview) card.classList.add('review');
 
-    const top = document.createElement('div');
-    top.className = 'event-top';
-
     const includeLabel = document.createElement('label');
     includeLabel.className = 'include-toggle';
     const include = document.createElement('input');
     include.type = 'checkbox';
     include.checked = event.include !== false;
-    include.setAttribute('aria-label', 'Termin in den Export aufnehmen');
+    include.setAttribute('aria-label', `${event.title || event.code || 'Dienst'} in den Export aufnehmen`);
     include.addEventListener('change', () => {
       event.include = include.checked;
       card.classList.toggle('excluded', !include.checked);
@@ -327,82 +342,80 @@
     });
     includeLabel.append(include);
 
-    const titleArea = document.createElement('div');
-    titleArea.className = 'event-title-row';
-    const heading = document.createElement('strong');
-    heading.textContent = event.title || event.code || 'Dienst';
-    const badges = document.createElement('div');
-    badges.className = 'event-badges';
-    if (event.code) badges.append(makeBadge(event.code));
-    if (event.usedDetailTimes) badges.append(makeBadge('Detailzeit', 'detail'));
-    if (isOvernightEvent(event)) badges.append(makeBadge('endet am Folgetag', 'overnight'));
-    if (event.needsReview) badges.append(makeBadge('bitte prüfen', 'review'));
-    titleArea.append(heading, badges);
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'event-open';
+    open.setAttribute('aria-label', `${event.title || event.code || 'Dienst'} bearbeiten`);
+    open.addEventListener('click', () => openEventEditor(event.id));
 
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'icon-button';
-    remove.textContent = '×';
-    remove.setAttribute('aria-label', 'Termin löschen');
-    remove.addEventListener('click', () => {
-      state.events = state.events.filter((candidate) => candidate !== event);
-      renderEvents();
-    });
+    const token = document.createElement('span');
+    token.className = 'shift-token';
+    applyShiftAppearance(token, event);
+    token.textContent = event.code || '?';
 
-    top.append(includeLabel, titleArea, remove);
+    const copy = document.createElement('span');
+    copy.className = 'event-copy';
+    const title = document.createElement('strong');
+    title.textContent = event.title || friendlyTitle(event.code);
+    const meta = document.createElement('span');
+    meta.className = 'event-meta';
+    const overnightSuffix = isOvernightEvent(event) ? ' · Ende Folgetag' : '';
+    meta.textContent = `${formatDateCompact(event.date)} · ${event.start}–${event.end}${overnightSuffix}`;
+    copy.append(title, meta);
 
-    const fields = document.createElement('div');
-    fields.className = 'event-fields';
+    const flags = document.createElement('span');
+    flags.className = 'event-flags';
+    if (event.needsReview) flags.append(makeCompactFlag('Prüfen', 'review'));
+    else if (event.timeNormalized) flags.append(makeCompactFlag('Zeit korrigiert', 'normalized'));
+    else if (event.fuzzyMerged) flags.append(makeCompactFlag('Doppelt erkannt', 'merged'));
+    if (flags.childElementCount) copy.append(flags);
 
-    const titleInput = makeLabeledInput('Titel', 'text', event.title || event.code || 'Dienst');
-    titleInput.input.addEventListener('input', () => {
-      event.title = titleInput.input.value;
-      heading.textContent = event.title || 'Dienst';
-      event.needsReview = false;
-      card.classList.remove('review');
-      updateResultSummary();
-    });
+    const chevron = document.createElement('span');
+    chevron.className = 'event-chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    chevron.textContent = '›';
 
-    const dateInput = makeLabeledInput('Datum', 'date', event.date);
-    dateInput.input.addEventListener('change', () => {
-      event.date = dateInput.input.value;
-      clearDerivedTimes(event);
-      event.needsReview = false;
-      renderEvents();
-    });
-
-    const startInput = makeLabeledInput('Beginn', 'time', event.start);
-    startInput.input.addEventListener('change', () => {
-      event.start = startInput.input.value;
-      clearDerivedTimes(event);
-      event.needsReview = false;
-      renderEvents();
-    });
-
-    const endInput = makeLabeledInput('Ende', 'time', event.end);
-    endInput.input.addEventListener('change', () => {
-      event.end = endInput.input.value;
-      clearDerivedTimes(event);
-      event.needsReview = false;
-      renderEvents();
-    });
-
-    fields.append(titleInput.label, dateInput.label, startInput.label, endInput.label);
-
-    const source = document.createElement('p');
-    source.className = 'event-source';
-    const segmentText = event.segments && event.segments.length
-      ? ` · Blöcke: ${event.segments.map((segment) => formatSegment(segment, event.date)).join(', ')}`
-      : '';
-    const noteText = event.note ? ` · Hinweis: ${event.note}` : '';
-    const templateDiffers = event.templateStart && event.templateEnd &&
-      (event.templateStart !== event.start || event.templateEnd !== event.end);
-    const templateText = templateDiffers ? ` · Standard: ${event.templateStart}–${event.templateEnd}` : '';
-    const overnightText = isOvernightEvent(event) ? ' (Folgetag)' : '';
-    source.textContent = `${formatDateGerman(event.date)}, ${event.start}–${event.end}${overnightText}${templateText}${segmentText}${noteText}`;
-
-    card.append(top, fields, source);
+    open.append(token, copy, chevron);
+    card.append(includeLabel, open);
     return card;
+  }
+
+  function makeCompactFlag(text, className) {
+    const flag = document.createElement('span');
+    flag.className = `event-flag${className ? ` ${className}` : ''}`;
+    flag.textContent = text;
+    return flag;
+  }
+
+  function friendlyTitle(code) {
+    if (window.ShiftParser && window.ShiftParser.titleForCode) {
+      return window.ShiftParser.titleForCode(code, 'Dienst');
+    }
+    return code || 'Dienst';
+  }
+
+  function appearanceForEvent(event) {
+    const fallback = window.ShiftParser && window.ShiftParser.shiftMetaForCode
+      ? window.ShiftParser.shiftMetaForCode(event.code)
+      : { color: '#64748b', textColor: '#ffffff', borderColor: '#475569', icsColor: 'gray' };
+    const appearance = {
+      color: event.color || fallback.color,
+      textColor: event.textColor || fallback.textColor,
+      borderColor: event.borderColor || fallback.borderColor,
+      icsColor: event.icsColor || fallback.icsColor
+    };
+    event.color = appearance.color;
+    event.textColor = appearance.textColor;
+    event.borderColor = appearance.borderColor;
+    event.icsColor = appearance.icsColor;
+    return appearance;
+  }
+
+  function applyShiftAppearance(element, event) {
+    const appearance = appearanceForEvent(event);
+    element.style.setProperty('--shift-color', appearance.color);
+    element.style.setProperty('--shift-text', appearance.textColor);
+    element.style.setProperty('--shift-border', appearance.borderColor);
   }
 
   function effectiveEndDate(event) {
@@ -420,8 +433,15 @@
   function clearDerivedTimes(event) {
     event.segments = [];
     event.usedDetailTimes = false;
-    event.templateStart = event.start;
-    event.templateEnd = event.end;
+    event.manualTimeEdit = true;
+    event.timeNormalized = false;
+    event.originalTemplateStart = '';
+    event.originalTemplateEnd = '';
+    event.normalizationDeltaMinutes = 0;
+    if (!event.code) {
+      event.templateStart = event.start;
+      event.templateEnd = event.end;
+    }
     event.endDate = event.end <= event.start && window.ShiftParser && window.ShiftParser.addDays
       ? window.ShiftParser.addDays(event.date, 1)
       : event.date;
@@ -435,22 +455,107 @@
     return `${shortDate(startDate)} ${segment.start}–${shortDate(endDate)} ${segment.end}`;
   }
 
-  function makeBadge(text, className) {
-    const badge = document.createElement('span');
-    badge.className = `event-badge${className ? ` ${className}` : ''}`;
-    badge.textContent = text;
-    return badge;
+  function formatDateCompact(isoDate) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(isoDate || ''))) return isoDate || 'Datum prüfen';
+    const date = new Date(`${isoDate}T12:00:00Z`);
+    return new Intl.DateTimeFormat('de-DE', {
+      weekday: 'short', day: '2-digit', month: '2-digit', year: '2-digit', timeZone: 'UTC'
+    }).format(date);
   }
 
-  function makeLabeledInput(labelText, type, value) {
-    const label = document.createElement('label');
-    label.append(document.createTextNode(labelText));
-    const input = document.createElement('input');
-    input.type = type;
-    input.value = value || '';
-    input.autocomplete = 'off';
-    label.append(input);
-    return { label, input };
+  function eventById(id) {
+    return state.events.find((event) => event.id === id) || null;
+  }
+
+  function openEventEditor(eventId) {
+    const event = eventById(eventId);
+    if (!event) return;
+    state.editingEventId = event.id;
+    elements.eventEditorHeading.textContent = event.title || friendlyTitle(event.code);
+    elements.editorShiftCode.textContent = event.code || 'Unbekannter Code';
+    elements.editorShiftHint.textContent = `${formatDateGerman(event.date)} · ${event.start}–${event.end}${isOvernightEvent(event) ? ' (Folgetag)' : ''}`;
+    elements.editorEventTitle.value = event.title || friendlyTitle(event.code);
+    elements.editorEventDate.value = event.date || '';
+    elements.editorEventStart.value = event.start || '';
+    elements.editorEventEnd.value = event.end || '';
+    elements.editorEventInclude.checked = event.include !== false;
+    elements.editorShiftToken.textContent = event.code || '?';
+    applyShiftAppearance(elements.editorShiftToken, event);
+    elements.editorEventSource.textContent = editorSourceText(event);
+    elements.eventEditor.classList.remove('hidden');
+    elements.eventEditor.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('editor-open');
+  }
+
+  function editorSourceText(event) {
+    const details = [];
+    if (event.timeNormalized && event.originalTemplateStart && event.originalTemplateEnd) {
+      details.push(`OCR-Zeit ${event.originalTemplateStart}–${event.originalTemplateEnd} auf ${event.templateStart}–${event.templateEnd} korrigiert`);
+    }
+    if (event.segments && event.segments.length) {
+      details.push(`Arbeitsblöcke: ${event.segments.map((segment) => formatSegment(segment, event.date)).join(', ')}`);
+    }
+    if (event.fuzzyMerged || Number(event.mergedCopies) > 1) details.push('Ähnliche Doppel-Erkennung wurde zusammengeführt');
+    if (event.note) details.push(event.note);
+    if (event.sourceLine) details.push(`Erkannt: ${event.sourceLine}`);
+    return details.join(' · ') || 'Manuell angelegter Termin';
+  }
+
+  function closeEventEditor() {
+    state.editingEventId = '';
+    elements.eventEditor.classList.add('hidden');
+    elements.eventEditor.setAttribute('aria-hidden', 'true');
+    document.body.classList.remove('editor-open');
+  }
+
+  function saveEditedEvent() {
+    const event = eventById(state.editingEventId);
+    if (!event) return closeEventEditor();
+    const title = elements.editorEventTitle.value.trim();
+    const date = elements.editorEventDate.value;
+    const start = elements.editorEventStart.value;
+    const end = elements.editorEventEnd.value;
+    if (!title) return showToast('Bitte einen Titel eintragen.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return showToast('Bitte ein gültiges Datum wählen.');
+    if (!/^\d{2}:\d{2}$/.test(start) || !/^\d{2}:\d{2}$/.test(end)) return showToast('Bitte gültige Uhrzeiten wählen.');
+
+    const timeChanged = event.date !== date || event.start !== start || event.end !== end;
+    event.title = title;
+    event.titleEdited = title !== friendlyTitle(event.code);
+    event.date = date;
+    event.start = start;
+    event.end = end;
+    event.include = elements.editorEventInclude.checked;
+    if (timeChanged) clearDerivedTimes(event);
+    event.needsReview = false;
+    closeEventEditor();
+    const mergedCount = applyDedupeToState();
+    renderEvents();
+    showToast(mergedCount ? 'Ähnliche Doppeltermine wurden zusammengeführt.' : 'Änderung übernommen.');
+  }
+
+  function deleteEditedEvent() {
+    const event = eventById(state.editingEventId);
+    if (!event) return closeEventEditor();
+    if (!window.confirm(`„${event.title || event.code || 'Dienst'}“ wirklich löschen?`)) return;
+    state.events = state.events.filter((candidate) => candidate !== event);
+    closeEventEditor();
+    renderEvents();
+    showToast('Termin gelöscht.');
+  }
+
+  function applyDedupeToState() {
+    if (!window.ShiftParser || !window.ShiftParser.mergeAndDedupeDetailed) return 0;
+    const before = state.events.length;
+    const merged = window.ShiftParser.mergeAndDedupeDetailed(state.events);
+    state.events = merged.events;
+    state.mergeStats = {
+      inputCount: Math.max(state.mergeStats.inputCount || 0, merged.stats.inputCount),
+      mergedCount: (state.mergeStats.mergedCount || 0) + merged.stats.mergedCount,
+      fuzzyMergedCount: (state.mergeStats.fuzzyMergedCount || 0) + merged.stats.fuzzyMergedCount,
+      normalizedCount: merged.stats.normalizedCount
+    };
+    return Math.max(0, before - state.events.length);
   }
 
   function updateResultSummary() {
@@ -463,7 +568,12 @@
     if (overnight) elements.resultSummary.append(makeSummaryChip(`${overnight} über Nacht`));
     if (review) elements.resultSummary.append(makeSummaryChip(`${review} prüfen`, 'warn'));
     if (state.ignoredDaysOff) elements.resultSummary.append(makeSummaryChip(`${state.ignoredDaysOff} Frei-Wunsch übersprungen`));
-    if (state.files.length > 1) elements.resultSummary.append(makeSummaryChip(`${state.files.length} Screenshots, Duplikate entfernt`));
+    if (state.mergeStats.mergedCount) {
+      elements.resultSummary.append(makeSummaryChip(`${state.mergeStats.mergedCount} Doppel-Erkennung${state.mergeStats.mergedCount === 1 ? '' : 'en'} vereint`));
+    }
+    if (state.mergeStats.normalizedCount) {
+      elements.resultSummary.append(makeSummaryChip(`${state.mergeStats.normalizedCount} OCR-Zeit${state.mergeStats.normalizedCount === 1 ? '' : 'en'} korrigiert`));
+    }
 
     const warnings = [...state.parserWarnings];
     if (!state.events.length) warnings.push('Es wurde kein Dienst erkannt. Prüfe den OCR-Rohtext oder verwende einen vollständigen, scharfen Screenshot.');
@@ -506,6 +616,9 @@
 
   function addManualEvent() {
     const referenceDate = state.events.length ? state.events[state.events.length - 1].date : todayIso();
+    const appearance = window.ShiftParser && window.ShiftParser.shiftMetaForCode
+      ? window.ShiftParser.shiftMetaForCode('')
+      : { color: '#64748b', textColor: '#ffffff', borderColor: '#475569', icsColor: 'gray' };
     const event = {
       id: `manual-${typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Date.now()}`,
       date: referenceDate,
@@ -514,14 +627,24 @@
       endDate: referenceDate,
       templateStart: '08:00',
       templateEnd: '16:00',
+      originalTemplateStart: '',
+      originalTemplateEnd: '',
+      timeNormalized: false,
+      normalizationDeltaMinutes: 0,
       code: '',
       title: 'Dienst',
+      titleEdited: true,
+      color: appearance.color,
+      textColor: appearance.textColor,
+      borderColor: appearance.borderColor,
+      icsColor: appearance.icsColor,
       note: '',
       segments: [],
       usedDetailTimes: false,
       sourceLine: 'Manuell ergänzt',
       sourceIndex: -1,
       sourceIndices: [-1],
+      mergedCopies: 1,
       weekdayMismatch: false,
       needsReview: false,
       extractionMode: 'manual',
@@ -529,10 +652,7 @@
     };
     state.events.push(event);
     renderEvents();
-    requestAnimationFrame(() => {
-      const card = elements.eventList.querySelector(`[data-id="${CSS.escape(event.id)}"]`);
-      if (card) card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    });
+    requestAnimationFrame(() => openEventEditor(event.id));
   }
 
   function todayIso() {
@@ -549,6 +669,8 @@
   }
 
   function validateSelectedEvents() {
+    const mergedCount = applyDedupeToState();
+    if (mergedCount) renderEvents();
     const selected = state.events.filter((event) => event.include !== false);
     if (!selected.length) throw new Error('Bitte mindestens einen Termin für den Export auswählen.');
     for (const event of selected) {
@@ -583,7 +705,7 @@
           text: 'Polypoint-Dienstplan als Kalenderdatei',
           files: [file]
         });
-        showToast('ICS-Datei wurde an das iOS-Teilen-Menü übergeben.');
+        showToast('ICS-Datei wurde an das Teilen-Menü übergeben.');
       } else {
         triggerDownload(file, file.name || 'Dienstplan.ics');
         showToast('ICS-Datei wurde erstellt. Öffne sie anschließend mit Kalender.');
@@ -658,9 +780,18 @@
     }
     try {
       const registration = await navigator.serviceWorker.register('./service-worker.js', { updateViaCache: 'none' });
+      registration.addEventListener('updatefound', () => {
+        const installing = registration.installing;
+        if (!installing) return;
+        installing.addEventListener('statechange', () => {
+          if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+            showToast('Eine neue Version ist bereit. App einmal schließen und erneut öffnen.');
+          }
+        });
+      });
       registration.update().catch(() => {});
       await navigator.serviceWorker.ready;
-      elements.offlineStatus.textContent = 'Offline-Paket ist bereit.';
+      elements.offlineStatus.textContent = `Offline-Paket v${APP_VERSION} ist bereit.`;
       elements.offlineStatus.classList.add('ready');
     } catch (error) {
       console.warn('Service worker:', error);

@@ -8,11 +8,11 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="SchichtScan">
-  <meta name="description" content="Polypoint-Dienstplan aus Screenshots erkennen und als ICS in Apple Kalender importieren.">
-  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="description" content="Polypoint-Dienstplan lokal aus Screenshots erkennen und als ICS in einen Kalender importieren.">
+  <link rel="manifest" href="manifest.webmanifest?v=1.2.0">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="icon" href="icon-192.png">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=1.2.0">
   <title>SchichtScan</title>
 </head>
 <body>
@@ -21,7 +21,7 @@
       <span></span><span></span><span></span>
     </div>
     <div>
-      <p class="eyebrow">Polypoint → Apple Kalender</p>
+      <p class="eyebrow">Polypoint → Kalender</p>
       <h1>SchichtScan</h1>
     </div>
   </header>
@@ -29,7 +29,7 @@
   <main>
     <section class="card intro-card">
       <h2>Dienstplan aus Screenshot</h2>
-      <p>Wähle einen oder mehrere Screenshots aus der Polypoint-Mobilansicht. OCR, Auswertung und ICS-Erstellung laufen auf deinem iPhone; die Bilder werden nicht hochgeladen.</p>
+      <p>Wähle einen oder mehrere Screenshots aus der Polypoint-Mobilansicht. OCR, Auswertung und ICS-Erstellung laufen lokal auf deinem Gerät; die Bilder werden nicht hochgeladen.</p>
 
       <label class="upload-zone" id="upload-zone" for="screenshot-input">
         <span class="upload-icon" aria-hidden="true">＋</span>
@@ -72,6 +72,7 @@
 
       <div id="result-summary" class="summary-strip"></div>
       <div id="warning-box" class="warning-box hidden" role="alert"></div>
+      <p class="result-instruction">Tippe einen Dienst an, um Titel, Datum oder Zeiten zu ändern.</p>
       <div id="event-list" class="event-list"></div>
 
       <button id="add-event-button" class="button secondary wide" type="button">＋ Termin manuell hinzufügen</button>
@@ -127,11 +128,11 @@
     </section>
 
     <section id="export-card" class="card hidden export-card">
-      <h2>In Apple Kalender übernehmen</h2>
-      <p>Die App erstellt eine normale <code>.ics</code>-Datei. Nach dem Öffnen kannst du die Termine in Apple Kalender prüfen und gesammelt hinzufügen.</p>
+      <h2>In den Kalender übernehmen</h2>
+      <p>Die App erstellt eine normale <code>.ics</code>-Datei. Du kannst sie mit Apple Kalender oder einer kompatiblen Kalender-App auf Android öffnen.</p>
       <button id="share-ics-button" class="button primary wide" type="button">ICS teilen / öffnen</button>
       <button id="download-ics-button" class="button secondary wide" type="button">ICS herunterladen</button>
-      <p class="muted small">Apple Kalender wird nicht automatisch verändert. Der endgültige Import erfolgt erst nach deiner Bestätigung.</p>
+      <p class="muted small">Dein Kalender wird nicht automatisch verändert. Der endgültige Import erfolgt erst nach deiner Bestätigung.</p>
     </section>
 
     <section id="raw-card" class="card hidden">
@@ -147,19 +148,71 @@
     </section>
 
     <section class="card install-card">
-      <h2>Als App auf dem iPhone</h2>
-      <p>Du musst keinen Server kaufen. Die statischen App-Dateien müssen nur einmal über eine HTTPS-Adresse geöffnet werden – beispielsweise kostenlos über GitHub Pages. Danach über <strong>Teilen → Zum Home-Bildschirm</strong> installieren; OCR und Export funktionieren anschließend offline auf dem iPhone.</p>
+      <h2>Als App auf iPhone oder Android</h2>
+      <p>Du musst keinen Server kaufen. Öffne die HTTPS-Adresse einmal online. Auf dem iPhone installierst du über <strong>Teilen → Zum Home-Bildschirm</strong>, auf Android in Chrome über <strong>Menü → Zum Startbildschirm hinzufügen → Installieren</strong>. OCR und Export funktionieren danach offline.</p>
       <p id="offline-status" class="status-pill">Offline-Paket wird vorbereitet …</p>
     </section>
 
     <section id="fatal-error" class="card error-card hidden" role="alert"></section>
   </main>
 
+  <div id="event-editor" class="event-editor hidden" aria-hidden="true">
+    <div id="event-editor-backdrop" class="event-editor-backdrop"></div>
+    <section class="event-editor-sheet" role="dialog" aria-modal="true" aria-labelledby="event-editor-heading">
+      <header class="editor-header">
+        <div>
+          <p class="eyebrow">Dienst bearbeiten</p>
+          <h2 id="event-editor-heading">Dienst</h2>
+        </div>
+        <button id="event-editor-close" class="icon-button editor-close" type="button" aria-label="Bearbeitung schließen">×</button>
+      </header>
+
+      <div class="editor-shift-summary">
+        <span id="editor-shift-token" class="shift-token">?</span>
+        <span>
+          <strong id="editor-shift-code">Dienst</strong>
+          <small id="editor-shift-hint">Datum und Zeit</small>
+        </span>
+      </div>
+
+      <div class="editor-fields">
+        <label class="full-width">
+          Titel im Kalender
+          <input id="editor-event-title" type="text" autocomplete="off">
+        </label>
+        <label class="full-width">
+          Datum
+          <input id="editor-event-date" type="date">
+        </label>
+        <label>
+          Beginn
+          <input id="editor-event-start" type="time">
+        </label>
+        <label>
+          Ende
+          <input id="editor-event-end" type="time">
+        </label>
+        <label class="checkbox-setting full-width editor-checkbox">
+          <input id="editor-event-include" type="checkbox" checked>
+          <span>In die ICS-Datei aufnehmen</span>
+        </label>
+      </div>
+
+      <p id="editor-event-source" class="editor-source"></p>
+
+      <div class="editor-actions">
+        <button id="editor-delete" class="button danger" type="button">Löschen</button>
+        <button id="editor-cancel" class="button secondary" type="button">Abbrechen</button>
+        <button id="editor-save" class="button primary" type="button">Übernehmen</button>
+      </div>
+    </section>
+  </div>
+
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
-  <script src="tesseract.min.js" defer></script>
-  <script src="parser.js" defer></script>
-  <script src="ics.js" defer></script>
-  <script src="app.js" defer></script>
+  <script src="tesseract.min.js?v=1.2.0" defer></script>
+  <script src="parser.js?v=1.2.0" defer></script>
+  <script src="ics.js?v=1.2.0" defer></script>
+  <script src="app.js?v=1.2.0" defer></script>
 </body>
 </html>

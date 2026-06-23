@@ -1,0 +1,15 @@
+SchichtScan 1.2.0 – Update nur mit dem iPhone
+
+1. Diese ZIP-Datei in „Dateien“ entpacken.
+2. Safari öffnen und das GitHub-Repository „schichtscan“ aufrufen.
+3. „Add file“ → „Upload files“ → „choose your files“ antippen.
+4. Im entpackten Ordner ALLE Dateien markieren.
+5. Die Dateien direkt in die oberste Ebene des Repositorys hochladen.
+   index.html muss neben app.js liegen. Nicht die ZIP-Datei hochladen.
+6. „Commit changes“ in den Branch main bestätigen.
+7. Einige Minuten warten und die GitHub-Pages-Seite online öffnen.
+8. Prüfen, ob „Offline-Paket v1.2.0 ist bereit“ angezeigt wird.
+9. Bereits installierte App einmal vollständig schließen und neu öffnen.
+
+Die neuen Dateien dürfen die gleichnamigen Dateien der vorherigen Version ersetzen.
+Screenshots und ICS-Dateien niemals in das GitHub-Repository hochladen.

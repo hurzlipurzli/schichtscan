@@ -98,6 +98,9 @@
     if (templateDiffers) {
       lines.push(`Standardzeit: ${event.templateStart}–${event.templateEnd}`);
     }
+    if (event.timeNormalized && event.originalTemplateStart && event.originalTemplateEnd) {
+      lines.push(`OCR-Zeit korrigiert: ${event.originalTemplateStart}–${event.originalTemplateEnd} → ${event.templateStart}–${event.templateEnd}`);
+    }
     if (event.segments && event.segments.length) {
       lines.push(`Arbeitsblöcke: ${event.segments.map((segment) => segmentText(segment, event.date)).join(', ')}`);
     }
@@ -155,17 +158,21 @@
     for (const event of selected) {
       const endDate = resolvedEndDate(event);
       const title = event.title || event.code || 'Dienst';
-      const uidSeed = `${event.date}|${event.start}|${endDate}|${event.end}|${title}`;
+      const uidSeed = event.id || `${event.date}|${event.code || title}|${event.templateStart || event.start}|${event.templateEnd || event.end}`;
       const description = buildDescription(event, settings);
       lines.push('BEGIN:VEVENT');
-      lines.push(`UID:${fnv1a(uidSeed)}-${event.date.replace(/-/g, '')}@schichtscan.local`);
+      const uidValue = /^event-[a-f0-9]+$/i.test(uidSeed)
+        ? uidSeed
+        : `${fnv1a(uidSeed)}-${event.date.replace(/-/g, '')}`;
+      lines.push(`UID:${uidValue}@schichtscan.local`);
       lines.push(`DTSTAMP:${dtstamp}`);
       lines.push(`DTSTART;TZID=${settings.timeZone}:${localDateTime(event.date, event.start)}`);
       lines.push(`DTEND;TZID=${settings.timeZone}:${localDateTime(endDate, event.end)}`);
       lines.push(`SUMMARY:${escapeText(title)}`);
       if (settings.location) lines.push(`LOCATION:${escapeText(settings.location)}`);
       if (description) lines.push(`DESCRIPTION:${escapeText(description)}`);
-      lines.push('CATEGORIES:Dienstplan');
+      if (/^[A-Za-z]+$/.test(String(event.icsColor || ''))) lines.push(`COLOR:${event.icsColor}`);
+      lines.push(event.code ? `CATEGORIES:Dienstplan,${escapeText(event.code)}` : 'CATEGORIES:Dienstplan');
       lines.push('STATUS:CONFIRMED');
       lines.push('TRANSP:OPAQUE');
       lines.push('SEQUENCE:0');
