@@ -1,0 +1,12 @@
+SchichtScan – iPhone-Uploadpaket
+
+1. Diese ZIP-Datei in der iOS-App „Dateien“ entpacken.
+2. github.com in Safari öffnen (nicht in der GitHub-App).
+3. Das Repository „schichtscan“ öffnen.
+4. Falls „Add file“ fehlt: Safari-Menü „aA“ > „Desktop-Website anfordern“.
+5. „Add file“ > „Upload files“ > „choose your files“.
+6. Im entpackten Ordner oben rechts „…“ > „Auswählen“ und ALLE Dateien markieren.
+7. Hochladen und „Commit changes“ bestätigen.
+
+Wichtig: Nicht die ZIP-Datei selbst hochladen. Alle Dateien dieses Ordners müssen direkt
+im Hauptverzeichnis des Repositorys liegen. Es sind keine Unterordner nötig.

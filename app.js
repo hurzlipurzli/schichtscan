@@ -210,9 +210,9 @@
   async function createOcrWorker() {
     const baseUrl = new URL('.', window.location.href);
     return window.Tesseract.createWorker('deu', window.Tesseract.OEM.LSTM_ONLY, {
-      workerPath: new URL('vendor/worker.min.js', baseUrl).href,
-      langPath: new URL('vendor/lang', baseUrl).href,
-      corePath: new URL('vendor/tesseract-core/tesseract-core-lstm.wasm.js', baseUrl).href,
+      workerPath: new URL('worker.min.js', baseUrl).href,
+      langPath: new URL('.', baseUrl).href,
+      corePath: new URL('tesseract-core-lstm.wasm.js', baseUrl).href,
       workerBlobURL: false,
       gzip: true,
       logger: handleOcrLog,

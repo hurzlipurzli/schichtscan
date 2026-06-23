@@ -1,6 +1,6 @@
 'use strict';
 
-const CACHE_NAME = 'schichtscan-v1.1.0';
+const CACHE_NAME = 'schichtscan-v1.1.1';
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,13 +9,13 @@ const APP_SHELL = [
   './ics.js',
   './app.js',
   './manifest.webmanifest',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/apple-touch-icon.png',
-  './vendor/tesseract.min.js',
-  './vendor/worker.min.js',
-  './vendor/tesseract-core/tesseract-core-lstm.wasm.js',
-  './vendor/lang/deu.traineddata.gz'
+  './icon-192.png',
+  './icon-512.png',
+  './apple-touch-icon.png',
+  './tesseract.min.js',
+  './worker.min.js',
+  './tesseract-core-lstm.wasm.js',
+  './deu.traineddata.gz'
 ];
 
 self.addEventListener('install', (event) => {
