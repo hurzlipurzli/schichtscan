@@ -827,7 +827,23 @@
       ...(better.sourceIndices || []),
       ...(other.sourceIndices || [])
     ].filter(Number.isInteger)));
-    better.include = better.include !== false || other.include !== false;
+    const currentSelectionTouched = current.includeTouched === true;
+    const incomingSelectionTouched = incoming.includeTouched === true;
+    if (currentSelectionTouched || incomingSelectionTouched) {
+      let selectionSource;
+      if (currentSelectionTouched && incomingSelectionTouched) {
+        const currentRevision = Number(current.includeRevision) || 0;
+        const incomingRevision = Number(incoming.includeRevision) || 0;
+        selectionSource = incomingRevision > currentRevision ? incoming : current;
+      } else {
+        selectionSource = currentSelectionTouched ? current : incoming;
+      }
+      better.include = selectionSource.include !== false;
+      better.includeTouched = true;
+      better.includeRevision = Number(selectionSource.includeRevision) || 0;
+    } else {
+      better.include = current.include !== false || incoming.include !== false;
+    }
     better.mergedCopies = (Number(current.mergedCopies) || 1) + (Number(incoming.mergedCopies) || 1);
     better.fuzzyMerged = Boolean(current.fuzzyMerged || incoming.fuzzyMerged || !exactIdentity);
     better.needsReview = conflict || (Boolean(better.needsReview) && Boolean(other.needsReview));

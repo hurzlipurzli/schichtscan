@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.2.1';
+  const APP_VERSION = '1.2.2';
   const SETTINGS_KEY = 'schichtscan.settings.v2';
   const state = {
     files: [],
@@ -14,7 +14,8 @@
     processing: false,
     activeFileIndex: -1,
     worker: null,
-    editingEventId: ''
+    editingEventId: '',
+    selectionRevision: 0
   };
 
   const elements = {};
@@ -204,7 +205,12 @@
       }
 
       const merged = window.ShiftParser.mergeAndDedupeDetailed(allEvents);
-      state.events = merged.events.map((event) => ({ ...event, include: event.include !== false }));
+      state.events = merged.events.map((event) => ({
+        ...event,
+        include: event.include !== false,
+        includeTouched: false,
+        includeRevision: 0
+      }));
       state.mergeStats = merged.stats;
       renderResults();
       updateProgress(1, 'Erkennung abgeschlossen', `${state.events.length} Termin${state.events.length === 1 ? '' : 'e'} erkannt.`);
@@ -322,6 +328,13 @@
     updateResultSummary();
   }
 
+  function setEventIncluded(event, included) {
+    state.selectionRevision += 1;
+    event.include = Boolean(included);
+    event.includeTouched = true;
+    event.includeRevision = state.selectionRevision;
+  }
+
   function createEventCard(event) {
     const card = document.createElement('article');
     card.className = 'event-card';
@@ -335,11 +348,15 @@
     include.type = 'checkbox';
     include.checked = event.include !== false;
     include.setAttribute('aria-label', `${event.title || event.code || 'Dienst'} in den Export aufnehmen`);
-    include.addEventListener('change', () => {
-      event.include = include.checked;
+    const applyIncludeChoice = () => {
+      setEventIncluded(event, include.checked);
       card.classList.toggle('excluded', !include.checked);
       updateResultSummary();
-    });
+    };
+    // `input` reacts immediately on iOS; `change` remains as a fallback for other browsers.
+    include.addEventListener('input', applyIncludeChoice);
+    include.addEventListener('change', applyIncludeChoice);
+    includeLabel.addEventListener('click', (clickEvent) => clickEvent.stopPropagation());
     includeLabel.append(include);
 
     const open = document.createElement('button');
@@ -530,7 +547,8 @@
     event.date = date;
     event.start = start;
     event.end = end;
-    event.include = elements.editorEventInclude.checked;
+    const includeChanged = (event.include !== false) !== elements.editorEventInclude.checked;
+    if (includeChanged) setEventIncluded(event, elements.editorEventInclude.checked);
     if (timeChanged) clearDerivedTimes(event);
     event.needsReview = false;
     closeEventEditor();
@@ -653,7 +671,9 @@
       weekdayMismatch: false,
       needsReview: false,
       extractionMode: 'manual',
-      include: true
+      include: true,
+      includeTouched: false,
+      includeRevision: 0
     };
     state.events.push(event);
     renderEvents();
@@ -674,13 +694,20 @@
   }
 
   function validateSelectedEvents() {
-    const mergedCount = applyDedupeToState();
-    if (mergedCount) renderEvents();
-    const selected = state.events.filter((event) => event.include !== false);
-    if (!selected.length) throw new Error('Bitte mindestens einen Termin für den Export auswählen.');
+    // Wichtig: zuerst die Benutzerauswahl anwenden, erst danach nur die ausgewählten
+    // Einträge für den Export zusammenführen. So kann ein abgewählter Dienst niemals
+    // durch eine ähnliche Doppel-Erkennung wieder aktiviert werden.
+    const chosen = state.events.filter((event) => event.include !== false);
+    if (!chosen.length) throw new Error('Bitte mindestens einen Termin für den Export auswählen.');
+
+    const selected = window.ShiftParser && window.ShiftParser.mergeAndDedupeDetailed
+      ? window.ShiftParser.mergeAndDedupeDetailed(chosen).events
+      : chosen.map((event) => ({ ...event }));
+
     for (const event of selected) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(event.date || '')) throw new Error('Mindestens ein Datum ist ungültig.');
       if (!/^\d{2}:\d{2}$/.test(event.start || '') || !/^\d{2}:\d{2}$/.test(event.end || '')) throw new Error('Mindestens eine Uhrzeit ist ungültig.');
+      event.include = true;
       event.endDate = effectiveEndDate(event);
       if (!/^\d{4}-\d{2}-\d{2}$/.test(event.endDate || '')) throw new Error('Mindestens ein Enddatum ist ungültig.');
       if (!String(event.title || '').trim()) throw new Error('Jeder Termin benötigt einen Titel.');

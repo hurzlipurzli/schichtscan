@@ -1,10 +1,12 @@
-SchichtScan 1.2.1 – Update nur mit dem iPhone
+SchichtScan 1.2.2 – Update nur mit dem iPhone
 
 Behoben:
-- R+ heißt im Kalender jetzt „Rufdienst“.
-- Ruf- und Nachtdienste mit einer Endzeit am Folgetag werden beim ICS-Export
-  zwingend bis zum folgenden Kalendertag exportiert (z. B. 16:36–06:54).
-- Vor jedem Export wird ein eventuell veraltetes Enddatum automatisch repariert.
+- Abgewählte Dienste werden jetzt zuverlässig aus der ICS-Datei ausgeschlossen.
+- Die Auswahl wird vor dem Zusammenführen ähnlicher Doppel-Erkennungen angewendet.
+  Dadurch kann ein abgewählter Dienst beim Export nicht wieder aktiviert werden.
+- Das Häkchen reagiert auf iPhone und Android sofort; der Zähler „für Export“
+  zeigt direkt die tatsächlich ausgewählte Anzahl.
+- R+ bleibt „Rufdienst“ und endet bei 16:36–06:54 weiterhin am Folgetag.
 
 Update:
 1. Diese ZIP-Datei in „Dateien“ entpacken.
@@ -15,10 +17,10 @@ Update:
    index.html muss neben app.js liegen. Nicht die ZIP-Datei hochladen.
 6. „Commit changes“ in den Branch main bestätigen.
 7. Einige Minuten warten und die GitHub-Pages-Seite online öffnen.
-8. Prüfen, ob „Offline-Paket v1.2.1 ist bereit“ angezeigt wird.
+8. Prüfen, ob „Offline-Paket v1.2.2 ist bereit“ angezeigt wird.
 9. Bereits installierte App vollständig schließen und erneut öffnen. Falls weiterhin
-   v1.2.0 erscheint, die Web-App vom Home-Bildschirm löschen, die Pages-Seite in
-   Safari neu laden und erneut zum Home-Bildschirm hinzufügen.
+   eine ältere Version erscheint, die Web-App vom Home-Bildschirm löschen, die
+   Pages-Seite in Safari neu laden und erneut zum Home-Bildschirm hinzufügen.
 
 Die neuen Dateien dürfen die gleichnamigen Dateien der vorherigen Version ersetzen.
 Screenshots und ICS-Dateien niemals in das GitHub-Repository hochladen.
