@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; connect-src 'self'; img-src 'self' blob: data:; style-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <meta name="theme-color" content="#0b63ce">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="SchichtScan">
+  <meta name="description" content="Polypoint-Dienstplan aus Screenshots erkennen und als ICS in Apple Kalender importieren.">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="styles.css">
+  <title>SchichtScan</title>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand-mark" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
+    <div>
+      <p class="eyebrow">Polypoint → Apple Kalender</p>
+      <h1>SchichtScan</h1>
+    </div>
+  </header>
+
+  <main>
+    <section class="card intro-card">
+      <h2>Dienstplan aus Screenshot</h2>
+      <p>Wähle einen oder mehrere Screenshots aus der Polypoint-Mobilansicht. OCR, Auswertung und ICS-Erstellung laufen auf deinem iPhone; die Bilder werden nicht hochgeladen.</p>
+
+      <label class="upload-zone" id="upload-zone" for="screenshot-input">
+        <span class="upload-icon" aria-hidden="true">＋</span>
+        <strong>Screenshot auswählen</strong>
+        <span>PNG oder JPEG, auch mehrere überlappende Screenshots</span>
+        <input id="screenshot-input" type="file" accept="image/png,image/jpeg,image/webp,image/*" multiple>
+      </label>
+
+      <div id="file-list" class="file-list" aria-live="polite"></div>
+
+      <button id="recognize-button" class="button primary wide" type="button" disabled>
+        Dienstplan erkennen
+      </button>
+
+      <p class="privacy-note"><span aria-hidden="true">🔒</span> Keine Cloud-OCR, kein Konto, kein Server-Upload.</p>
+    </section>
+
+    <section id="progress-card" class="card hidden" aria-live="polite">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Lokale Texterkennung</p>
+          <h2 id="progress-title">OCR wird vorbereitet …</h2>
+        </div>
+        <strong id="progress-percent">0 %</strong>
+      </div>
+      <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress-track">
+        <div id="progress-bar" class="progress-bar"></div>
+      </div>
+      <p id="progress-detail" class="muted">Beim ersten Start wird das mitgelieferte deutsche Sprachmodell vom App-Speicher geladen.</p>
+    </section>
+
+    <section id="result-card" class="card hidden">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Vor dem Import prüfen</p>
+          <h2>Erkannte Dienste</h2>
+        </div>
+        <span id="result-count" class="count-badge">0</span>
+      </div>
+
+      <div id="result-summary" class="summary-strip"></div>
+      <div id="warning-box" class="warning-box hidden" role="alert"></div>
+      <div id="event-list" class="event-list"></div>
+
+      <button id="add-event-button" class="button secondary wide" type="button">＋ Termin manuell hinzufügen</button>
+    </section>
+
+    <section id="settings-card" class="card hidden">
+      <details>
+        <summary>
+          <span>
+            <strong>Kalender- und Erkennungseinstellungen</strong>
+            <small>Titel, Ort, Erinnerung und Schichtcodes</small>
+          </span>
+        </summary>
+        <div class="settings-grid">
+          <label>
+            Kalendername
+            <input id="calendar-name" type="text" value="Dienstplan" autocomplete="off">
+          </label>
+          <label>
+            Ort (optional)
+            <input id="location" type="text" placeholder="z. B. Charité Campus …" autocomplete="off">
+          </label>
+          <label>
+            Erinnerung
+            <select id="reminder-minutes">
+              <option value="0">Keine</option>
+              <option value="15">15 Minuten vorher</option>
+              <option value="30">30 Minuten vorher</option>
+              <option value="60">1 Stunde vorher</option>
+              <option value="720">12 Stunden vorher</option>
+            </select>
+          </label>
+          <label class="checkbox-setting">
+            <input id="include-source-note" type="checkbox" checked>
+            <span>Prüfhinweis in Terminbeschreibung aufnehmen</span>
+          </label>
+          <label class="checkbox-setting full-width">
+            <input id="prefer-detail-times" type="checkbox" checked>
+            <span>Detailblöcke für den tatsächlichen Beginn und das tatsächliche Ende verwenden</span>
+          </label>
+          <label class="full-width">
+            Schichtcodes nach Uhrzeit
+            <textarea id="shift-code-map" rows="7" spellcheck="false">06:30-15:00=F6
+08:00-16:30=F4
+11:30-20:00=Z1
+14:30-23:00=S2
+22:30-07:00=N2
+16:36-06:54=R+</textarea>
+            <small>Die obere Standardzeit bestimmt den Schichtcode. Abweichende Detailblöcke wie 06:30–12:00 und 12:30–17:00 bestimmen standardmäßig die Kalenderzeit.</small>
+          </label>
+        </div>
+      </details>
+    </section>
+
+    <section id="export-card" class="card hidden export-card">
+      <h2>In Apple Kalender übernehmen</h2>
+      <p>Die App erstellt eine normale <code>.ics</code>-Datei. Nach dem Öffnen kannst du die Termine in Apple Kalender prüfen und gesammelt hinzufügen.</p>
+      <button id="share-ics-button" class="button primary wide" type="button">ICS teilen / öffnen</button>
+      <button id="download-ics-button" class="button secondary wide" type="button">ICS herunterladen</button>
+      <p class="muted small">Apple Kalender wird nicht automatisch verändert. Der endgültige Import erfolgt erst nach deiner Bestätigung.</p>
+    </section>
+
+    <section id="raw-card" class="card hidden">
+      <details>
+        <summary>
+          <span>
+            <strong>OCR-Rohtext und Diagnose</strong>
+            <small>Hilfreich, falls ein Termin nicht erkannt wurde</small>
+          </span>
+        </summary>
+        <div id="raw-results" class="raw-results"></div>
+      </details>
+    </section>
+
+    <section class="card install-card">
+      <h2>Als App auf dem iPhone</h2>
+      <p>Du musst keinen Server kaufen. Die statischen App-Dateien müssen nur einmal über eine HTTPS-Adresse geöffnet werden – beispielsweise kostenlos über GitHub Pages. Danach über <strong>Teilen → Zum Home-Bildschirm</strong> installieren; OCR und Export funktionieren anschließend offline auf dem iPhone.</p>
+      <p id="offline-status" class="status-pill">Offline-Paket wird vorbereitet …</p>
+    </section>
+
+    <section id="fatal-error" class="card error-card hidden" role="alert"></section>
+  </main>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script src="vendor/tesseract.min.js" defer></script>
+  <script src="parser.js" defer></script>
+  <script src="ics.js" defer></script>
+  <script src="app.js" defer></script>
+</body>
+</html>

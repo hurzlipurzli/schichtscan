@@ -1,0 +1,10 @@
+{
+  "name": "schichtscan-polypoint-pwa",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Lokale Polypoint-Screenshot-OCR und ICS-Export für iPhone",
+  "scripts": {
+    "test": "node --test tests/parser.test.cjs",
+    "serve": "python3 -m http.server 8080"
+  }
+}
