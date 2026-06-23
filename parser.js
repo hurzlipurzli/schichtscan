@@ -926,13 +926,128 @@
       ignoredDaysOff += parsedBlock.ignoredDaysOff;
     }
 
+    const cardStyleEvents = parseCardStyleText(text, {
+      shiftCodes: settings.shiftCodes,
+      defaultTitle: settings.defaultTitle,
+      sourceIndex,
+      timeSnapToleranceMinutes: settings.timeSnapToleranceMinutes
+    });
+    const filteredPrimaryEvents = events.filter((event) => !cardStyleEvents.some((cardEvent) =>
+      cardEvent.sourceLine &&
+      event.sourceLine === cardEvent.sourceLine &&
+      (event.code || '') === (cardEvent.code || '') &&
+      (event.templateStart || event.start) === (cardEvent.templateStart || cardEvent.start) &&
+      (event.templateEnd || event.end) === (cardEvent.templateEnd || cardEvent.end) &&
+      event.date !== cardEvent.date
+    ));
+
     return {
-      events: mergeAndDedupe(events),
+      events: mergeAndDedupe([...filteredPrimaryEvents, ...cardStyleEvents]),
       datesFound: blocks.length,
       ignoredDaysOff,
       warnings: blocks.filter((block) => block.dateInfo.weekdayMismatch)
         .map((block) => `Wochentag passt nicht zum Datum ${block.dateInfo.isoDate}.`)
     };
+  }
+
+
+  function buildSimpleEvent(config) {
+    const codeMeta = shiftMetaForCode(config.code || '');
+    const date = config.date;
+    const start = config.start;
+    const end = config.end;
+    const endDate = resolvedEventEndDate(date, start, end, config.endDate || date);
+    const event = {
+      id: '',
+      date,
+      endDate,
+      start,
+      end,
+      templateStart: config.templateStart || start,
+      templateEnd: config.templateEnd || end,
+      originalTemplateStart: '',
+      originalTemplateEnd: '',
+      timeNormalized: false,
+      normalizationDeltaMinutes: 0,
+      code: codeMeta.code || cleanCode(config.code || ''),
+      title: config.title || titleForCode(codeMeta.code || config.code, config.defaultTitle || 'Dienst'),
+      titleEdited: false,
+      color: config.color || codeMeta.color,
+      textColor: config.textColor || codeMeta.textColor,
+      borderColor: config.borderColor || codeMeta.borderColor,
+      icsColor: config.icsColor || codeMeta.icsColor,
+      note: config.note || '',
+      segments: (config.segments || []).map((segment) => ({ ...segment })),
+      usedDetailTimes: Boolean(config.usedDetailTimes),
+      sourceLine: config.sourceLine || '',
+      sourceIndex: Number.isInteger(config.sourceIndex) ? config.sourceIndex : 0,
+      sourceIndices: Array.isArray(config.sourceIndices) ? config.sourceIndices.slice() : [Number.isInteger(config.sourceIndex) ? config.sourceIndex : 0],
+      weekdayMismatch: Boolean(config.weekdayMismatch),
+      needsReview: Boolean(config.needsReview) || !(codeMeta.code || config.code),
+      extractionMode: config.extractionMode || 'secondary',
+      include: config.include !== false
+    };
+    return event;
+  }
+
+  function findNearbyDateInfo(lines, index, radius) {
+    const maxRadius = Number.isFinite(radius) ? Math.max(0, radius) : 4;
+    const offsets = [0];
+    for (let delta = 1; delta <= maxRadius; delta += 1) offsets.push(delta);
+    for (let delta = 1; delta <= maxRadius; delta += 1) offsets.push(-delta);
+    for (const offset of offsets) {
+      const line = lines[index + offset];
+      if (!line) continue;
+      const dateInfo = parseDateFromLine(line);
+      if (dateInfo) return dateInfo;
+    }
+    return null;
+  }
+
+  function parseCardStyleText(text, options) {
+    const settings = {
+      shiftCodes: { ...DEFAULT_SHIFT_CODES, ...((options && options.shiftCodes) || {}) },
+      defaultTitle: (options && options.defaultTitle) || 'Dienst',
+      timeSnapToleranceMinutes: options && Number.isFinite(options.timeSnapToleranceMinutes)
+        ? Math.max(0, Number(options.timeSnapToleranceMinutes))
+        : DEFAULT_TIME_SNAP_TOLERANCE_MINUTES
+    };
+    const sourceIndex = options && Number.isInteger(options.sourceIndex) ? options.sourceIndex : 0;
+    const lines = String(text || '').split(/\r?\n/).map(normalizeLine).filter(Boolean);
+    const events = [];
+
+    for (let index = 0; index < lines.length; index += 1) {
+      const line = lines[index];
+      const ranges = extractTimeRanges(line);
+      if (!ranges.length) continue;
+      const range = resolveKnownTemplate(ranges[0], settings.shiftCodes, '', settings.timeSnapToleranceMinutes) || ranges[0];
+      const dateInfo = findNearbyDateInfo(lines, index, 4);
+      if (!dateInfo) continue;
+
+      let code = extractCodeFromLine(line, ranges[0]) || mappedCodeForRange(range, settings.shiftCodes, '');
+      const contextText = [line, lines[index + 1] || '', lines[index + 2] || ''].join(' ');
+      if (!code && /bereitschaft/i.test(contextText)) code = 'R+';
+      if (!code && /nachtdienst/i.test(contextText)) code = 'N2';
+      if (!code && /tagdienst/i.test(contextText)) code = inferCodeByStart(range.start, settings.shiftCodes);
+
+      const event = buildSimpleEvent({
+        date: dateInfo.isoDate,
+        endDate: range.endMinutes <= range.startMinutes ? addDays(dateInfo.isoDate, 1) : dateInfo.isoDate,
+        start: range.start,
+        end: range.end,
+        templateStart: range.start,
+        templateEnd: range.end,
+        code,
+        defaultTitle: settings.defaultTitle,
+        note: /\bMo\s*-\s*Fr\b/i.test(line) ? 'Mo–Fr' : '',
+        sourceLine: line,
+        sourceIndex,
+        extractionMode: 'card'
+      });
+      events.push(event);
+    }
+
+    return mergeAndDedupe(events);
   }
 
   function parseShiftCodeMapping(value) {
@@ -964,6 +1079,7 @@
     extractDatedIntervals,
     durationMinutes,
     parseScheduleText,
+    parseCardStyleText,
     mergeAndDedupe,
     mergeAndDedupeDetailed,
     parseShiftCodeMapping,

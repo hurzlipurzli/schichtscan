@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.2.2';
+  const APP_VERSION = '1.3.0';
   const SETTINGS_KEY = 'schichtscan.settings.v2';
   const state = {
     files: [],
@@ -189,15 +189,18 @@
           sourceIndex: index,
           preferDetailTimes: elements.preferDetailTimes.checked
         });
-        allEvents.push(...parsed.events);
-        state.parserWarnings.push(...parsed.warnings);
+        const windowsParsed = (looksLikeWindowsGridScreenshot(canvas) || !parsed.events.length)
+          ? await extractWindowsGridEvents(canvas, state.worker, shiftCodes, index)
+          : { events: [], warnings: [] };
+        allEvents.push(...parsed.events, ...windowsParsed.events);
+        state.parserWarnings.push(...parsed.warnings, ...(windowsParsed.warnings || []));
         state.ignoredDaysOff += Number(parsed.ignoredDaysOff) || 0;
         state.rawResults.push({
           filename: file.name || `Screenshot ${index + 1}`,
           text,
           confidence,
           datesFound: parsed.datesFound,
-          eventsFound: parsed.events.length,
+          eventsFound: parsed.events.length + windowsParsed.events.length,
           ignoredDaysOff: Number(parsed.ignoredDaysOff) || 0
         });
         canvas.width = 1;
@@ -311,6 +314,286 @@
       };
       image.src = url;
     });
+  }
+
+
+  function cropCanvasRegion(sourceCanvas, x, y, width, height, options) {
+    const settings = { scale: 1, grayscale: false, threshold: null, ...options };
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(width * settings.scale));
+    canvas.height = Math.max(1, Math.round(height * settings.scale));
+    const context = canvas.getContext('2d', { alpha: false, willReadFrequently: true });
+    context.fillStyle = '#ffffff';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(sourceCanvas, x, y, width, height, 0, 0, canvas.width, canvas.height);
+    if (settings.grayscale || Number.isFinite(settings.threshold)) {
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
+      const threshold = Number.isFinite(settings.threshold) ? Number(settings.threshold) : null;
+      for (let index = 0; index < imageData.data.length; index += 4) {
+        const gray = Math.round(imageData.data[index] * 0.299 + imageData.data[index + 1] * 0.587 + imageData.data[index + 2] * 0.114);
+        const value = threshold === null ? gray : (gray >= threshold ? 255 : 0);
+        imageData.data[index] = value;
+        imageData.data[index + 1] = value;
+        imageData.data[index + 2] = value;
+      }
+      context.putImageData(imageData, 0, 0);
+    }
+    return canvas;
+  }
+
+  async function recognizeCanvasRegion(worker, canvas, psm) {
+    if (!worker) throw new Error('OCR-Worker nicht verfügbar.');
+    if (Number.isFinite(psm)) {
+      await worker.setParameters({ tessedit_pageseg_mode: psm });
+    }
+    return worker.recognize(canvas);
+  }
+
+  function looksLikeWindowsGridScreenshot(canvas) {
+    if (!canvas) return false;
+    return canvas.width >= 500 && canvas.height <= 220 && canvas.width / Math.max(1, canvas.height) >= 3.6;
+  }
+
+  function extractMonthYearFromText(text) {
+    const value = String(text || '').toLowerCase();
+    const months = {
+      januar: 1, jan: 1,
+      februar: 2, feb: 2,
+      märz: 3, maerz: 3, marz: 3, mär: 3,
+      april: 4, apr: 4,
+      mai: 5,
+      juni: 6, jun: 6,
+      juli: 7, jul: 7,
+      august: 8, aug: 8,
+      september: 9, sept: 9, sep: 9,
+      oktober: 10, okt: 10,
+      november: 11, nov: 11,
+      dezember: 12, dez: 12
+    };
+    let month = 0;
+    for (const [name, number] of Object.entries(months)) {
+      if (value.includes(name)) {
+        month = number;
+        break;
+      }
+    }
+    const yearMatch = value.match(/20\d{2}/);
+    if (!month || !yearMatch) return null;
+    return { month, year: Number(yearMatch[0]) };
+  }
+
+  function wordText(word) {
+    return String(word && (word.text || word.raw_text || word.symbol || '') || '').trim();
+  }
+
+  function wordBox(word) {
+    const box = word && (word.bbox || word.boundingBox || word.box);
+    if (box && Number.isFinite(box.x0) && Number.isFinite(box.y0) && Number.isFinite(box.x1) && Number.isFinite(box.y1)) {
+      return { left: box.x0, top: box.y0, right: box.x1, bottom: box.y1 };
+    }
+    if (box && Number.isFinite(box.x) && Number.isFinite(box.y) && Number.isFinite(box.w) && Number.isFinite(box.h)) {
+      return { left: box.x, top: box.y, right: box.x + box.w, bottom: box.y + box.h };
+    }
+    if (Number.isFinite(word.left) && Number.isFinite(word.top) && Number.isFinite(word.width) && Number.isFinite(word.height)) {
+      return { left: word.left, top: word.top, right: word.left + word.width, bottom: word.top + word.height };
+    }
+    return null;
+  }
+
+  function uniqueDayWords(words, scaledHeaderHeight, headerScale) {
+    const items = [];
+    (words || []).forEach((word) => {
+      const text = wordText(word);
+      if (!/^\d{1,2}$/.test(text)) return;
+      const value = Number(text);
+      if (value < 1 || value > 31) return;
+      const box = wordBox(word);
+      if (!box) return;
+      const midY = (box.top + box.bottom) / 2;
+      if (midY < scaledHeaderHeight * 0.52) return;
+      const centerX = ((box.left + box.right) / 2) / headerScale;
+      const width = Math.max(1, (box.right - box.left) / headerScale);
+      items.push({ day: value, centerX, width, top: box.top / headerScale });
+    });
+    items.sort((left, right) => left.centerX - right.centerX);
+    const deduped = [];
+    items.forEach((item) => {
+      const previous = deduped[deduped.length - 1];
+      if (previous && Math.abs(previous.centerX - item.centerX) < Math.max(previous.width, item.width, 10)) {
+        if (item.top > previous.top) deduped[deduped.length - 1] = item;
+        return;
+      }
+      deduped.push(item);
+    });
+    return deduped;
+  }
+
+  function darkContentRatio(canvas) {
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    const { data, width, height } = context.getImageData(0, 0, canvas.width, canvas.height);
+    let dark = 0;
+    for (let index = 0; index < data.length; index += 4) {
+      const gray = data[index] * 0.299 + data[index + 1] * 0.587 + data[index + 2] * 0.114;
+      if (gray < 205) dark += 1;
+    }
+    return dark / Math.max(1, width * height);
+  }
+
+  function normalizeGridToken(token) {
+    let value = String(token || '').toUpperCase().replace(/[^A-Z0-9+]/g, '');
+    const corrections = {
+      R4: 'R+', RY: 'R+', RP: 'R+', RT: 'R+', R7: 'R+',
+      FB: 'F6', F8: 'F6',
+      ZI: 'Z1', ZL: 'Z1',
+      SI: 'S2'
+    };
+    return corrections[value] || value;
+  }
+
+  function extractRelevantCodesFromOcrText(text) {
+    const allowed = new Set(['F6', 'F4', 'Z1', 'S2', 'N2', 'R+']);
+    const ignored = new Set(['R1', 'R2', 'RU', 'U', 'FR', 'LE', 'F1', 'F2', 'F3', 'F5', 'F7', 'F9', 'N1']);
+    const rawTokens = String(text || '')
+      .toUpperCase()
+      .replace(/[^A-Z0-9+\s]/g, ' ')
+      .split(/\s+/)
+      .filter(Boolean);
+    const result = [];
+    rawTokens.forEach((rawToken) => {
+      const token = normalizeGridToken(rawToken);
+      if (!token || ignored.has(token) || !allowed.has(token)) return;
+      if (!result.includes(token)) result.push(token);
+    });
+    return result;
+  }
+
+  function formatIsoDate(year, month, day) {
+    return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  }
+
+  function timeRangeForCode(code, shiftCodes) {
+    const normalizedCode = window.ShiftParser && window.ShiftParser.shiftMetaForCode
+      ? window.ShiftParser.shiftMetaForCode(code).code
+      : code;
+    const entries = Object.entries(shiftCodes || {});
+    for (const [range, mappedCode] of entries) {
+      const cleanedMapped = window.ShiftParser && window.ShiftParser.shiftMetaForCode
+        ? window.ShiftParser.shiftMetaForCode(mappedCode).code
+        : mappedCode;
+      if (cleanedMapped !== normalizedCode) continue;
+      const match = String(range).match(/^(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+      if (match) return { start: match[1], end: match[2] };
+    }
+    return null;
+  }
+
+  function addDaysToIsoDate(isoDate, days) {
+    if (window.ShiftParser && window.ShiftParser.addDays) return window.ShiftParser.addDays(isoDate, days);
+    const [year, month, day] = String(isoDate || '').split('-').map(Number);
+    const date = new Date(Date.UTC(year, month - 1, day + days));
+    return formatIsoDate(date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate());
+  }
+
+  function eventFromGridCode(code, date, shiftCodes, sourceIndex, sourceLine) {
+    const timeRange = timeRangeForCode(code, shiftCodes);
+    if (!timeRange) return null;
+    const meta = window.ShiftParser && window.ShiftParser.shiftMetaForCode
+      ? window.ShiftParser.shiftMetaForCode(code)
+      : { code, title: code || 'Dienst', color: '#64748b', textColor: '#fff', borderColor: '#475569', icsColor: 'gray' };
+    const overnight = timeRange.end <= timeRange.start;
+    return {
+      id: '',
+      date,
+      endDate: overnight ? addDaysToIsoDate(date, 1) : date,
+      start: timeRange.start,
+      end: timeRange.end,
+      templateStart: timeRange.start,
+      templateEnd: timeRange.end,
+      originalTemplateStart: '',
+      originalTemplateEnd: '',
+      timeNormalized: false,
+      normalizationDeltaMinutes: 0,
+      code: meta.code || code,
+      title: meta.title || code || 'Dienst',
+      titleEdited: false,
+      color: meta.color,
+      textColor: meta.textColor,
+      borderColor: meta.borderColor,
+      icsColor: meta.icsColor,
+      note: '',
+      segments: [],
+      usedDetailTimes: false,
+      sourceLine: sourceLine || '',
+      sourceIndex,
+      sourceIndices: [sourceIndex],
+      weekdayMismatch: false,
+      needsReview: false,
+      extractionMode: 'windows-grid',
+      include: true
+    };
+  }
+
+  async function extractWindowsGridEvents(canvas, worker, shiftCodes, sourceIndex) {
+    if (!looksLikeWindowsGridScreenshot(canvas)) return { events: [], warnings: [] };
+    const warnings = [];
+    const headerHeight = Math.max(42, Math.min(canvas.height - 18, Math.round(canvas.height * 0.58)));
+    const headerScale = 3;
+    const headerCanvas = cropCanvasRegion(canvas, 0, 0, canvas.width, headerHeight, { scale: headerScale, grayscale: true, threshold: 190 });
+    const headerResult = await recognizeCanvasRegion(worker, headerCanvas, (window.Tesseract.PSM && window.Tesseract.PSM.SINGLE_BLOCK) || 6);
+    const monthYear = extractMonthYearFromText(headerResult && headerResult.data ? headerResult.data.text || '' : '');
+    const dayWords = uniqueDayWords(headerResult && headerResult.data ? headerResult.data.words || [] : [], headerCanvas.height, headerScale);
+    if (!monthYear || dayWords.length < 5) {
+      return { events: [], warnings };
+    }
+
+    const xValues = dayWords.map((item) => item.centerX);
+    const spacings = xValues.slice(1).map((value, index) => value - xValues[index]).filter((value) => value > 4);
+    const medianSpacing = spacings.length
+      ? spacings.slice().sort((left, right) => left - right)[Math.floor(spacings.length / 2)]
+      : Math.max(18, canvas.width / Math.max(dayWords.length, 1));
+
+    const bounds = dayWords.map((item, index) => {
+      const previous = dayWords[index - 1];
+      const next = dayWords[index + 1];
+      const left = index === 0 ? Math.max(0, item.centerX - medianSpacing / 2) : (previous.centerX + item.centerX) / 2;
+      const right = index === dayWords.length - 1 ? Math.min(canvas.width, item.centerX + medianSpacing / 2) : (item.centerX + next.centerX) / 2;
+      return { day: item.day, left: Math.max(0, Math.floor(left)), right: Math.min(canvas.width, Math.ceil(right)) };
+    });
+
+    const tileTop = Math.max(0, Math.round(canvas.height * 0.52));
+    const tileHeight = canvas.height - tileTop;
+    const events = [];
+    for (const cell of bounds) {
+      if (cell.right - cell.left < 10) continue;
+      const cellCanvas = cropCanvasRegion(canvas, cell.left, tileTop, cell.right - cell.left, tileHeight, { scale: 6, grayscale: true, threshold: 180 });
+      if (darkContentRatio(cellCanvas) < 0.03) continue;
+      let recognizedText = '';
+      try {
+        const cellResult = await recognizeCanvasRegion(worker, cellCanvas, (window.Tesseract.PSM && window.Tesseract.PSM.SPARSE_TEXT) || 11);
+        recognizedText = cellResult && cellResult.data ? cellResult.data.text || '' : '';
+      } catch (_) {
+        recognizedText = '';
+      }
+      let codes = extractRelevantCodesFromOcrText(recognizedText);
+      if (!codes.length) {
+        const halfHeight = Math.floor(cellCanvas.height / 2);
+        const upperCanvas = cropCanvasRegion(cellCanvas, 0, 0, cellCanvas.width, halfHeight, { scale: 1, grayscale: true, threshold: 180 });
+        const lowerCanvas = cropCanvasRegion(cellCanvas, 0, halfHeight, cellCanvas.width, cellCanvas.height - halfHeight, { scale: 1, grayscale: true, threshold: 180 });
+        const [upperResult, lowerResult] = await Promise.all([
+          recognizeCanvasRegion(worker, upperCanvas, (window.Tesseract.PSM && window.Tesseract.PSM.SINGLE_BLOCK) || 6).catch(() => null),
+          recognizeCanvasRegion(worker, lowerCanvas, (window.Tesseract.PSM && window.Tesseract.PSM.SINGLE_BLOCK) || 6).catch(() => null)
+        ]);
+        codes = extractRelevantCodesFromOcrText(`${upperResult && upperResult.data ? upperResult.data.text || '' : ''} ${lowerResult && lowerResult.data ? lowerResult.data.text || '' : ''}`);
+      }
+      if (!codes.length) continue;
+      const date = formatIsoDate(monthYear.year, monthYear.month, cell.day);
+      codes.forEach((code) => {
+        const event = eventFromGridCode(code, date, shiftCodes, sourceIndex, `Windows-Kachel ${cell.day}: ${code}`);
+        if (event) events.push(event);
+      });
+    }
+
+    return { events, warnings };
   }
 
   function renderResults() {
