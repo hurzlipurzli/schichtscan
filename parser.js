@@ -990,17 +990,39 @@
     return event;
   }
 
-  function findNearbyDateInfo(lines, index, radius) {
+  function findNearbyDateCandidate(lines, index, direction, radius) {
     const maxRadius = Number.isFinite(radius) ? Math.max(0, radius) : 4;
-    const offsets = [0, 1, 2, -1, -2, -3, -4, 3, 4]
-      .filter((offset, offsetIndex, list) => Math.abs(offset) <= maxRadius && list.indexOf(offset) === offsetIndex);
-    for (const offset of offsets) {
-      const line = lines[index + offset];
+    const step = direction < 0 ? -1 : 1;
+    for (let distance = 0; distance <= maxRadius; distance += 1) {
+      if (distance === 0 && step < 0) continue;
+      const lineIndex = index + distance * step;
+      const line = lines[lineIndex];
       if (!line) continue;
       const dateInfo = parseDateFromLine(line);
-      if (dateInfo) return dateInfo;
+      if (dateInfo) return { dateInfo, index: lineIndex, distance };
     }
     return null;
+  }
+
+  function linesBetweenContainCardDateContext(lines, dateLineIndex) {
+    const context = lines.slice(dateLineIndex + 1, dateLineIndex + 4).join(' ');
+    return /\b(tagdienst|bereitschaft|nachtdienst)\b|HTG[-\s]/i.test(context);
+  }
+
+  function findNearbyDateInfo(lines, index, radius) {
+    const current = findNearbyDateCandidate(lines, index, 1, 0);
+    if (current) return current.dateInfo;
+
+    const next = findNearbyDateCandidate(lines, index, 1, radius);
+    const previous = findNearbyDateCandidate(lines, index, -1, radius);
+
+    // In Polypoint mobile a service line is below its date header. The next full date is often just
+    // the following day and must not pull a R+/N2 service forward by one day. In the alternative
+    // card-style app the full date comes below the time and is followed by labels such as Tagdienst
+    // or Bereitschaft, so only that explicit card context wins over the previous date.
+    if (next && next.distance > 0 && linesBetweenContainCardDateContext(lines, next.index)) return next.dateInfo;
+    if (previous) return previous.dateInfo;
+    return next ? next.dateInfo : null;
   }
 
   function parseCardStyleText(text, options) {

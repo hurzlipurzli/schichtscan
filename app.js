@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.3.3';
+  const APP_VERSION = '1.3.4';
   const SETTINGS_KEY = 'schichtscan.settings.v2';
   const state = {
     files: [],

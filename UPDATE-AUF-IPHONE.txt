@@ -1,4 +1,4 @@
-SchichtScan 1.3.3 – Update nur mit dem iPhone
+SchichtScan 1.3.4 – Update nur mit dem iPhone
 
 Behoben und erweitert:
 - Das Windows-Klinikprogramm wird jetzt anhand der Tageszahlen und Kachelpositionen ausgewertet.
@@ -18,7 +18,7 @@ Update:
    index.html muss neben app.js liegen. Nicht die ZIP-Datei hochladen.
 6. „Commit changes“ in den Branch main bestätigen.
 7. Einige Minuten warten und die GitHub-Pages-Seite online öffnen.
-8. Prüfen, ob „Offline-Paket v1.3.3 ist bereit“ angezeigt wird.
+8. Prüfen, ob „Offline-Paket v1.3.4 ist bereit“ angezeigt wird.
 9. Bereits installierte App vollständig schließen und erneut öffnen. Falls weiterhin
    eine ältere Version erscheint, die Web-App vom Home-Bildschirm löschen, die
    Pages-Seite in Safari neu laden und erneut zum Home-Bildschirm hinzufügen.
@@ -27,4 +27,4 @@ Die neuen Dateien dürfen die gleichnamigen Dateien der vorherigen Version erset
 Screenshots und ICS-Dateien niemals in das GitHub-Repository hochladen.
 
 
-Neu in 1.3.3: bessere Plausibilitätsprüfung, keine falschen Dienst-Einträge aus N2-Detailzeilen, Button „Unklare entfernen“.
+Neu in 1.3.4: bessere Plausibilitätsprüfung, keine falschen Dienst-Einträge aus N2-Detailzeilen, Button „Unklare entfernen“.
