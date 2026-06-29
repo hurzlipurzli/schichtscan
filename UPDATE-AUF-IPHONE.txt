@@ -1,12 +1,13 @@
-SchichtScan 1.3.0 – Update nur mit dem iPhone
+SchichtScan 1.3.3 – Update nur mit dem iPhone
 
-Behoben:
-- Abgewählte Dienste werden jetzt zuverlässig aus der ICS-Datei ausgeschlossen.
-- Die Auswahl wird vor dem Zusammenführen ähnlicher Doppel-Erkennungen angewendet.
-  Dadurch kann ein abgewählter Dienst beim Export nicht wieder aktiviert werden.
-- Das Häkchen reagiert auf iPhone und Android sofort; der Zähler „für Export“
-  zeigt direkt die tatsächlich ausgewählte Anzahl.
-- R+ bleibt „Rufdienst“ und endet bei 16:36–06:54 weiterhin am Folgetag.
+Behoben und erweitert:
+- Das Windows-Klinikprogramm wird jetzt anhand der Tageszahlen und Kachelpositionen ausgewertet.
+- Der Fehler aus 1.3.0/1.3.1, durch den trotz erkanntem Monat 0 Termine entstanden, ist behoben.
+- Die App fordert dafür lokale OCR-Positionsdaten (TSV) an und verarbeitet sie ohne Upload.
+- F6, F4, Z1, S2, N2 und R4/R+ werden berücksichtigt.
+- R1, R2 und R3 werden ignoriert.
+- Doppelbelegungen in einer Kachel werden geprüft; ein zusätzliches R4 wird als Rufdienst übernommen.
+- Die bisherige Mobilansicht und Kalenderkarten-Erkennung bleiben erhalten.
 
 Update:
 1. Diese ZIP-Datei in „Dateien“ entpacken.
@@ -17,10 +18,13 @@ Update:
    index.html muss neben app.js liegen. Nicht die ZIP-Datei hochladen.
 6. „Commit changes“ in den Branch main bestätigen.
 7. Einige Minuten warten und die GitHub-Pages-Seite online öffnen.
-8. Prüfen, ob „Offline-Paket v1.3.0 ist bereit“ angezeigt wird.
+8. Prüfen, ob „Offline-Paket v1.3.3 ist bereit“ angezeigt wird.
 9. Bereits installierte App vollständig schließen und erneut öffnen. Falls weiterhin
    eine ältere Version erscheint, die Web-App vom Home-Bildschirm löschen, die
    Pages-Seite in Safari neu laden und erneut zum Home-Bildschirm hinzufügen.
 
 Die neuen Dateien dürfen die gleichnamigen Dateien der vorherigen Version ersetzen.
 Screenshots und ICS-Dateien niemals in das GitHub-Repository hochladen.
+
+
+Neu in 1.3.3: bessere Plausibilitätsprüfung, keine falschen Dienst-Einträge aus N2-Detailzeilen, Button „Unklare entfernen“.

@@ -9,10 +9,10 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="SchichtScan">
   <meta name="description" content="Polypoint-Dienstplan lokal aus Screenshots erkennen und als ICS in einen Kalender importieren.">
-  <link rel="manifest" href="manifest.webmanifest?v=1.3.0">
+  <link rel="manifest" href="manifest.webmanifest?v=1.3.3">
   <link rel="apple-touch-icon" href="apple-touch-icon.png">
   <link rel="icon" href="icon-192.png">
-  <link rel="stylesheet" href="styles.css?v=1.3.0">
+  <link rel="stylesheet" href="styles.css?v=1.3.3">
   <title>SchichtScan</title>
 </head>
 <body>
@@ -71,6 +71,9 @@
       </div>
 
       <div id="result-summary" class="summary-strip"></div>
+      <div class="result-action-row">
+        <button id="drop-unclear-button" class="button secondary small-action" type="button" disabled>Unklare entfernen</button>
+      </div>
       <div id="warning-box" class="warning-box hidden" role="alert"></div>
       <p class="result-instruction">Häkchen links entfernen = nicht exportieren. Tippe einen Dienst an, um Titel, Datum oder Zeiten zu ändern.</p>
       <div id="event-list" class="event-list"></div>
@@ -210,9 +213,9 @@
 
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
-  <script src="tesseract.min.js?v=1.3.0" defer></script>
-  <script src="parser.js?v=1.3.0" defer></script>
-  <script src="ics.js?v=1.3.0" defer></script>
-  <script src="app.js?v=1.3.0" defer></script>
+  <script src="tesseract.min.js?v=1.3.3" defer></script>
+  <script src="parser.js?v=1.3.3" defer></script>
+  <script src="ics.js?v=1.3.3" defer></script>
+  <script src="app.js?v=1.3.3" defer></script>
 </body>
 </html>

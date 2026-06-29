@@ -164,6 +164,10 @@ main {
 
 .warning-box { padding: 12px 14px; margin-bottom: 14px; border-radius: 13px; color: var(--orange); background: var(--orange-soft); border: 1px solid #efd49c; line-height: 1.42; font-size: 0.9rem; }
 
+.result-action-row { display: flex; flex-wrap: wrap; gap: 8px; margin: -6px 0 14px; }
+.button.small-action { min-height: 38px; width: auto; padding: 8px 12px; font-size: 0.82rem; }
+.button.small-action:disabled { opacity: 0.48; cursor: not-allowed; }
+
 .result-instruction { margin: -2px 0 10px; color: var(--muted); font-size: 0.82rem; }
 .event-list { display: grid; gap: 8px; margin: 6px 0 14px; }
 .event-card {

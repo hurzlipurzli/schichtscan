@@ -992,9 +992,8 @@
 
   function findNearbyDateInfo(lines, index, radius) {
     const maxRadius = Number.isFinite(radius) ? Math.max(0, radius) : 4;
-    const offsets = [0];
-    for (let delta = 1; delta <= maxRadius; delta += 1) offsets.push(delta);
-    for (let delta = 1; delta <= maxRadius; delta += 1) offsets.push(-delta);
+    const offsets = [0, 1, 2, -1, -2, -3, -4, 3, 4]
+      .filter((offset, offsetIndex, list) => Math.abs(offset) <= maxRadius && list.indexOf(offset) === offsetIndex);
     for (const offset of offsets) {
       const line = lines[index + offset];
       if (!line) continue;
@@ -1018,6 +1017,9 @@
 
     for (let index = 0; index < lines.length; index += 1) {
       const line = lines[index];
+      const datedIntervalLike = /\b[0-3]?[0-9]\s*[./]\s*[0-1]?[0-9](?:\s*[./]\s*\d{2,4})?\s+[0-2]?[0-9]\s*[:.;]\s*[0-5][0-9]\s*-\s*[0-3]?[0-9]\s*[./]\s*[0-1]?[0-9](?:\s*[./]\s*\d{2,4})?\s+[0-2]?[0-9]\s*[:.;]\s*[0-5][0-9]/.test(line);
+      if (datedIntervalLike) continue;
+
       const ranges = extractTimeRanges(line);
       if (!ranges.length) continue;
       const range = resolveKnownTemplate(ranges[0], settings.shiftCodes, '', settings.timeSnapToleranceMinutes) || ranges[0];
@@ -1029,6 +1031,9 @@
       if (!code && /bereitschaft/i.test(contextText)) code = 'R+';
       if (!code && /nachtdienst/i.test(contextText)) code = 'N2';
       if (!code && /tagdienst/i.test(contextText)) code = inferCodeByStart(range.start, settings.shiftCodes);
+      // The card-style parser is only a helper for the other app/compact calendar view.
+      // Without a recognized shift code it produced false positives from Polypoint N2 break/detail lines.
+      if (!code) continue;
 
       const event = buildSimpleEvent({
         date: dateInfo.isoDate,
